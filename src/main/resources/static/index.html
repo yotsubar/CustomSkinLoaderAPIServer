@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>CustomSkinLoader</title>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.12"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/axios/0.21.1/axios.min.js"></script>
+
+    <style>
+        .skin-info {
+            text-align: center;
+        }
+
+        .skin-info input[type="text"] {
+            width: 250px;
+            padding: 4px 8px;
+            text-align: center;
+        }
+
+        .player-name {
+            margin: 15px 10px;
+            font-size: 28px;
+        }
+
+        .texture-div {
+            text-align: center;
+        }
+
+        .texture {
+            display: inline-block;
+            width: 400px;
+            padding: 12px 18px;
+            border: 1px solid;
+        }
+
+        .texture * {
+            padding: 5px 10px;
+        }
+
+        .texture b {
+            float: left;
+        }
+
+        .texture img {
+            height: 100px;
+        }
+
+        .texture button {
+            padding: 3px;
+            float: right;
+        }
+    </style>
+</head>
+<body>
+
+<div id="app">
+    <app></app>
+</div>
+
+<script type="text/x-template" id="appTemp">
+    <div class="skin-info">
+        <label>
+            <input type="text" v-model="username"
+                   :placeholder="i18n.input_id_tip"
+                   @keyup.enter="confirmUsername">
+        </label>
+        <div v-if="info.username" class="texture-div">
+            <p class="player-name"><b>{{i18n.Player}}：</b><span>{{info.username}}</span></p>
+            <small>{{i18n.upload_size_tip}}</small>
+            <div v-for="type in textureTypes" :key="info.username + type">
+                <texture :type="type"
+                         :hash="info.textures[type]"
+                         @imgSelected="imgSelected"
+                         @clear="clearTexture"></texture>
+                <br/>
+            </div>
+        </div>
+    </div>
+</script>
+
+<script type="text/x-template" id="textureDivTemp">
+    <div class="texture">
+        <b>{{typeName}}</b>
+        <label>
+            <input v-show="!url" ref="fileInput" type="file" accept="image/png" @change="upload">
+        </label>
+        <button v-show="url" @click="del">{{i18n.Clear}}</button>
+        <br>
+
+        <img v-if="url" :src="url"/>
+    </div>
+</script>
+
+<script>
+    let texts = {
+        en: {
+            "Clear": "Clear",
+            "mode_default": "Steve",
+            "mode_slim": "Alex",
+            "mode_cape": "cape",
+            "mode_elytra": "elytra",
+            "upload_size_tip": 'Upload png no bigger than 1M',
+            "oversize_alert": 'No bigger than 1M',
+            "Player": "Player",
+            "input_id_tip": "Input player's id and press the Enter key"
+        },
+        zh: {
+            "Clear": "清除",
+            "mode_default": "Steve",
+            "mode_slim": "Alex",
+            "mode_cape": "披风",
+            "mode_elytra": "鞘翅",
+            "upload_size_tip": '上传png图片, 最大1M',
+            "oversize_alert": '图片最大1M',
+            "Player": "玩家",
+            "input_id_tip": "输入玩家id,回车结束",
+        }
+    };
+
+    function getText() {
+        if (navigator.language.indexOf("zh") === 0) {
+            return texts.zh;
+        } else {
+            return texts.en;
+        }
+    }
+
+    let i18n = getText();
+
+    new Vue({
+        el: '#app',
+        components: {
+            "app": {
+                template: '#appTemp',
+                components: {
+                    "texture": {
+                        template: '#textureDivTemp',
+                        props: ['hash', 'type'],
+                        computed: {
+                            typeName() {
+                                return i18n['mode_' + this.type];
+                            },
+                            url() {
+                                if (this.hash) {
+                                    return `textures/${this.hash}`
+                                } else {
+                                    return '';
+                                }
+                            },
+                        },
+                        methods: {
+                            upload() {
+                                if (this.$refs.fileInput.files.length < 1) {
+                                    console.log("no file");
+                                    return;
+                                }
+                                let file = this.$refs.fileInput.files[0];
+                                if (file.size > 1024 * 1024) {
+                                    alert(i18n.oversize_alert);
+                                    return;
+                                }
+                                let reader = new FileReader();
+                                let self = this;
+                                reader.onload = function (e) {
+                                    let base64 = this.result.split(',')[1];
+                                    self.$refs.fileInput.value = '';
+                                    self.$emit('imgSelected', {base64: base64, type: self.type});
+                                }
+                                reader.readAsDataURL(file);
+                            },
+                            del() {
+                                if (!this.hash) {
+                                    return;
+                                }
+                                this.$emit('clear', {hash: this.hash, type: this.type});
+                            }
+                        }
+                    }
+                },
+                data() {
+                    return {
+                        username: '',
+                        info: {
+                            username: '',
+                            textures: {}
+                        },
+                        textureTypes: ['default', 'slim', 'cape', 'elytra'],
+                    };
+                },
+                methods: {
+                    confirmUsername() {
+                        if (!this.username || this.username === '') {
+                            return;
+                        }
+                        let self = this;
+                        axios.get(`skin/${self.username}`).then(function (response) {
+                            self.info = response.data;
+                        }).catch(function (error) {
+                            console.log(error);
+                        });
+                    },
+                    imgSelected(texture) {
+                        let self = this;
+                        let param = `base64=${encodeURIComponent(texture.base64)}`;
+                        axios.post(`skin/${this.info.username}/${texture.type}`, param).then(function (response) {
+                            texture.hash = response.data.hash;
+                            self.textureUpdated(texture);
+                        }).catch(function (error) {
+                            console.log(error);
+                        });
+                    },
+                    clearTexture(texture) {
+                        let self = this;
+                        axios.delete(`skin/${this.info.username}/${texture.type}`).then(function (response) {
+                            let param = Object.assign({}, texture);
+                            param.hash = '';
+                            self.textureUpdated(param);
+                        }).catch(function (error) {
+                            console.log(error);
+                        });
+                    },
+                    textureUpdated(texture) {
+                        let textures = Object.assign({}, this.info.textures);
+                        textures[texture.type] = texture.hash;
+                        this.info.textures = textures;
+                    }
+                }
+            },
+        }
+    });
+</script>
+</body>
+</html>

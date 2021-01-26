@@ -1,0 +1,15 @@
+spring:
+  datasource:
+    driver-class-name: org.h2.Driver
+    url: 'jdbc:h2:./db/skin'
+    username: skin
+    password: McSkin@0124!
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+app:
+  textures:
+    base: textures/
+server:
+  port: 80
